@@ -404,13 +404,171 @@ Signal:为信号；pid为获取到的master线程id
    2. 进入到安装目录，执行make upgrade
    3. 查看是否更新成功
 
-https://www.bilibili.com/video/BV1ov41187bq/?p=21&spm_id_from=pageDriver&vd_source=15cac809b169713f965c1032f507b775
-
 #### 配置文件结构
+
+1. worker_process 全局块
+   1. 设置nginx运行的整体指令
+2. events
+   1. nginx服务器用来配置与用户的网络连接的相关配置
+3. http
+   1. nginx服务器的代理使用
+   2. 第三方模块配置
+   3. server
+      1. 可以在http中配置多个server块:
+         1. 每个server块可以配置多个location块
 
 ### 基础配置
 
 #### nginx.conf详解
+
+##### 全局块
+
+user指令
+
+1. user:用于配置运行nginx服务器的worker进程的用户和用户组
+
+   1. | 语法   | user user[group] |
+      | ------ | ---------------- |
+      | 默认值 | nobody           |
+      | 位置   | 全局块           |
+
+      该属性也可以在编译的时候指定,语法如下
+
+      ```shell
+      ./configure --user=user --group=group
+      ```
+
+      该指令的使用步骤
+
+      1. 设置一个用户信息"www"
+
+         ```nginx
+         user www
+         ```
+
+      2. 创建一个用户
+
+         ```nginx
+         useradd www
+         ```
+
+      3. 在root目录下创建一个静态页面文件夹
+
+      4. 在配置文件中将访问的静态页面设置为root下的静态页面
+
+      5. 测试启动访问  ---->页面会报403的错误
+
+      6. 原因: 当前用户没有访问 /root/html目录的权限
+
+      7. 将文件创建到 /home/www/html/index.html,修改nginx下的相关配置
+
+      8. 能够访问成功
+
+   总结:
+
+   ​	使用user指令可以指定启动运行工作进程的用户及用户组,利于对系统对权限访问控制的更加精细和安全
+
+work process指令
+
+master_process用来指定是否开启工作进程
+
+| 语法   | master_processes on\|off |
+| ------ | ------------------------ |
+| 默认值 | master_processes on;     |
+| 位置   | 全局块                   |
+
+worker_process:用于配置Nginx生成工作进程的数量,这个是Nginx服务器实现并发处理服务的关键,理论上来说worker_process的值越大,可以支持的并发处理数量越多,但事实上这个值的设定是需要受到来自服务器自身的限制,建议将该值和和服务器的cpu的内核数保持一致
+
+| 语法   | worker_processes num/auto |
+| ------ | ------------------------- |
+| 默认值 | 1                         |
+| 位置   | 全局块                    |
+
+其他指令
+
+daemon:设定nginx是否进行守护进程的方式启动
+
+守护进程是linux后台执行的一种服务进程,特点是独立于控制终端,不会随控制终端关闭而停止
+
+| 语法   | daemon on\|off |
+| ------ | -------------- |
+| 默认值 | daemon on      |
+| 位置   | 全局块         |
+
+pid :用来配置Nginx当前master进程的进程号ID存储的文件路径
+
+| 语法   | pid file                                 |
+| ------ | ---------------------------------------- |
+| 默认值 | 默认值为:/usr/local/nginx/logs/nginx.pid |
+| 位置   | 全局块                                   |
+
+该属性可以通过 ./configure --pid-path=path来指定
+
+error_log : 用来配置nginx的错误日志存放路径
+
+建议不要设置成info以下的级别,因为会带来大量的磁盘I/o消耗,影响nginx的性能
+
+
+
+include:用来引入其他配置文件,使nginx的配置更加灵活
+
+| 语法   | include file |
+| ------ | ------------ |
+| 默认值 | 无           |
+| 位置   | any          |
+
+##### EVENT
+
+​	accept_mutex:用来设置nginx网络连接序列化
+
+| 语法   | accept_mutex on\|off |
+| ------ | -------------------- |
+| 默认值 | accept_mutex on      |
+| 位置   | events               |
+
+这个配置主要是解决常说的"惊群"问题,大致意思是:某个时刻,客户端发来一个连接请求,nginx后台是以多进程的工作模式,也就是说有多个worker进程会被同时唤醒,但是最终只会有一个进程可以获取连接,如果每次唤醒的进程数目太多,就会影响nginx的整体性能,如果将上述值设置为on(开启状态),将会对多个nginx进程接收连接进行序列号,一个个唤醒接收,就防止多个进程对连接的争抢
+
+multi_accept:用来设置是否允许同时接收多个网络连接
+
+| 语法   | multi_accpet on\|off |
+| ------ | -------------------- |
+| 默认值 | multi_accpet off     |
+| 位置   | events               |
+
+如果multi_accept被禁止了,nginx一个工作进程只能同时接收一个新的连接,否则一个工作进程可以同时接收所有的新连接
+
+
+
+work_connections:用来配置单个worker进程最大的连接数
+
+| 语法   | worker_connections number |
+| ------ | ------------------------- |
+| 默认值 | worker_connections 512    |
+| 位置   | events                    |
+
+ 这里的连接数不仅仅包括和前端用户建立的连接数,而是包括所有可能的连接数,另外,number值不能大于操作系统支持打开的最大文件句柄数量
+
+
+
+use:用来设置nginx服务器选择哪种事件驱动来处理网络消息
+
+| 语法   | use method       |
+| ------ | ---------------- |
+| 默认值 | 根据操作系统指定 |
+| 位置   | events           |
+
+此处所选择事件处理模型是nginx优化部分的一个重要内容,method的可选值有select/poll/epoll/kqueue等,之前在准备centos环境的时候,我们强调过要使用linux内核在2.6以上,就是为了能使用epoll函数来优化nginx
+
+可以在编译的时候使用
+
+```nginx
+--with-select_module
+--without-select_module
+--with-poll_module
+--without-poll_module
+```
+
+https://www.bilibili.com/video/BV1ov41187bq/?p=27&spm_id_from=pageDriver&vd_source=000766059912952028e3af1ddb9f2463
 
 #### Nginx服务器基础配置案例
 
